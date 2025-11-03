@@ -26,13 +26,17 @@ func main() {
 		os.MkdirAll(*outDir, os.ModePerm)
 	}
 
+	allRecords := [][]string{}
 	err := filepath.Walk(*inDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".pdf") {
 			fmt.Printf("Processing file: %s\n", path)
-			processPdf(path, *outDir)
+			recs := processPdf(path, *outDir)
+			for _, r := range recs {
+				allRecords = append(allRecords, r)
+			}
 		}
 		return nil
 	})
@@ -40,24 +44,42 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error walking the path %q: %v\n", *inDir, err)
 	}
+	// Write aggregated CSV if we have any records
+	if len(allRecords) > 0 {
+		allPath := filepath.Join(*outDir, "all.csv")
+		f, err := os.Create(allPath)
+		if err != nil {
+			fmt.Printf("Error creating aggregated CSV %s: %v\n", allPath, err)
+		} else {
+			w := csv.NewWriter(f)
+			w.Comma = ';'
+			w.Write([]string{"data", "description", "value"})
+			w.WriteAll(allRecords)
+			w.Flush()
+			f.Close()
+			fmt.Printf("Wrote aggregated CSV with %d rows to %s\n", len(allRecords), allPath)
+		}
+	} else {
+		fmt.Println("No records to aggregate; skipping all.csv")
+	}
 }
 
-func processPdf(pdfPath string, outDir string) {
+func processPdf(pdfPath string, outDir string) [][]string {
 	r, err := pdf.Open(pdfPath)
 	if err != nil {
 		fmt.Printf("Error opening PDF file %s: %v\n", pdfPath, err)
-		return
+		return nil
 	}
 
 	var buf bytes.Buffer
 	b, err := r.GetPlainText()
 	if err != nil {
 		fmt.Printf("Error extracting text from %s: %v\n", pdfPath, err)
-		return
+		return nil
 	}
 	if _, err := buf.ReadFrom(b); err != nil {
 		fmt.Printf("Error reading from buffer for %s: %v\n", pdfPath, err)
-		return
+		return nil
 	}
 
 	records := pdfStringToCsv(buf.String())
@@ -69,7 +91,7 @@ func processPdf(pdfPath string, outDir string) {
 		csvFile, err := os.Create(csvFilePath)
 		if err != nil {
 			fmt.Printf("Error creating CSV file %s: %v\n", csvFilePath, err)
-			return
+			return nil
 		}
 		defer csvFile.Close()
 
@@ -84,6 +106,7 @@ func processPdf(pdfPath string, outDir string) {
 	} else {
 		fmt.Printf("No records found in %s\n", pdfPath)
 	}
+	return records
 }
 func pdfStringToCsv(raw string) [][]string {
 	// Header cut only if 'Valuta' appears BEFORE first date (to retain early transactions)
