@@ -1,0 +1,6 @@
+in/
+out/
+test_in/
+test_out/
+*.exe
+*.pdf

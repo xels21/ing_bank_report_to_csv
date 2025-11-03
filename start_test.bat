@@ -1,0 +1,1 @@
+go run .\main.go -in="./test_in" -out="./test_out"
